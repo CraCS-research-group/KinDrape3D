@@ -12,14 +12,11 @@ The script shows how to define:
 
 Authors: Peter Hede Broberg, Christian Krogh, Bastian Schäfer, Jan Paul Wank, 
          Luise Kärger, Brian Lau Verndal Bak, Esben Lindgaard
-Date: July 2026
 """
 
 import time
 import KinDrape3D as kd3d
 import numpy as np
-
-
 
 def main():
     # ---------------------------------------------------------------------
@@ -128,7 +125,7 @@ def main():
         "drape_start_mould_xy": [0.0, 0.0], 
         
         # Origin point on the fabric
-        "drape_start_fabric_uv": [mesh["L"] / 2, mesh["W"] / 2], 
+        "drape_start_fabric_us": [mesh["L"] / 2, mesh["W"] / 2], 
         
         # Draping direction
         "ang": 0.0,
@@ -152,18 +149,20 @@ def main():
         
         # Kinematic assumptions
         # Valid options: 'pure_shear', 'simple_shear', 'enhanced_simple_shear'
-        "kinematics": "pure_shear", 
+        "kinematics": "enhanced_simple_shear", 
         
-        # Stabilizations for the simple shear and modified simple shear
+        # Stabilizations for the simple shear and enhanced simple shear
         "stabilizations": {
-            "enhanced_simple_shear_relation_type": "hyper_tan",
-            "enhanced_simple_shear_parameters":  [ 8.626e+00,  4.709e-01],
+            # Options: phenomenological, tricot, tricot_bounded, simple_shear
+            "enhanced_simple_shear_relation_type": "phenomenological", 
+            "enhanced_simple_shear_parameters":  [4.313,  4.709e-01],
             "enhanced_simple_shear_damping": 10,
-            "prune": True,
-            "prune_zigzag": True,
-            "prune_cutoff": 300,
-            "change_dir": True,
+            "remove_spurious_points": True,
             "average_fiber_length": True,
+            "curvature_based_point_removal": True,
+            # Only applicable if curvature_based_point_removal is True
+            "use_irregularity_index": True, 
+            "curvature_threshold": 300, 
         },
     }
 
@@ -190,7 +189,7 @@ def main():
     ax, fig = kd3d.utility.plot_drape_results(
         results['sim_data']['e_perp'], 
         P, X, Y, Z, 
-        label="Perpendicular strain []")
+        label="Perpendicular strain [-]")
     
     ax, fig = kd3d.utility.plot_drape_results(
         results['sim_data']['Shear'], 
@@ -203,7 +202,8 @@ def main():
         "example_id", "run_id", save_figures=True,
         )
     # Loading results
-    # run_dir, fields, meta = kd3d.utility.load_drape_results('example_case', 'example_id')
+    # run_dir, fields, meta = kd3d.utility.load_drape_results('example_id', 
+    #                                                         'run_id')
     return results
 
 if __name__ == '__main__':

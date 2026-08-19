@@ -2,20 +2,17 @@
 """
 utility.py
 
-Utility functions for visualization and geometry generation in the KinDrape3D package.
+Utility functions for visualization and geometry generation in the KinDrape3D 
+package.
 
 This module provides tools to:
-- Plot kinematic draping results in 3D, including surface and cell-wise shear maps.
-- Generate connecting bars between two layers (e.g., top and bottom preform surfaces).
+- Plot kinematic draping results, including surface and cell-wise shear maps.
 
 Functions:
 - plot_drape_results: Visualizes shear fields and 3D fiber placement.
-- compute_connect_bars: Creates inter-layer bar segments for visualization or export.
-
 
 Authors: Peter Hede Broberg, Christian Krogh, Bastian Schäfer, Jan Paul Wank, 
          Luise Kärger, Brian Lau Verndal Bak, Esben Lindgaard
-Date: February 2026
 """
 
 import numpy as np
@@ -30,7 +27,9 @@ from pathlib import Path
 # Functions for saving and loading results
 # -------------------------------------------------------------------------
 def _to_jsonable(x):
-    """Convert numpy objects (arrays + scalars) into JSON-friendly Python types."""
+    """
+    Convert numpy objects (arrays + scalars) into JSON-friendly Python types.
+    """
     if isinstance(x, np.ndarray):
         return x.tolist()
     if isinstance(x, (np.floating, np.integer, np.bool_)):
@@ -48,7 +47,8 @@ def load_drape_results(study_name, run_id, base_dir="results"):
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
     return run_dir, fields, meta
 
-def save_drape_results(fields, settings, timing_seconds, fig, ax, study_name, run_id, save_figures=True,):
+def save_drape_results(fields, settings, timing_seconds, fig, ax, study_name, 
+                       run_id, save_figures=True,):
     out_dir = Path("results") / study_name / run_id
     fig_dir = out_dir / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
@@ -63,7 +63,8 @@ def save_drape_results(fields, settings, timing_seconds, fig, ax, study_name, ru
         "shapes": {k: list(v.shape) for k, v in arrays.items()},
         "settings": _to_jsonable(settings),
     }
-    (out_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (out_dir / "meta.json").write_text(json.dumps(meta, indent=2), 
+                                       encoding="utf-8")
 
     lines = [
         f"study_name: {study_name}",
@@ -76,7 +77,8 @@ def save_drape_results(fields, settings, timing_seconds, fig, ax, study_name, ru
         "settings_keys:",
         *[f"  - {k}" for k in sorted(settings.keys())],
     ]
-    (out_dir / "overview.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (out_dir / "overview.txt").write_text("\n".join(lines) + "\n", 
+                                          encoding="utf-8")
    
     def _save(stem):
         fig.savefig(fig_dir / f"{stem}.png", dpi=300, bbox_inches="tight")
@@ -87,7 +89,8 @@ def save_drape_results(fields, settings, timing_seconds, fig, ax, study_name, ru
     
     _save("figure_default")
 
-    if hasattr(ax, "view_init") and hasattr(ax, "elev") and hasattr(ax, "azim"):
+    if hasattr(ax, "view_init") and hasattr(ax, "elev") and hasattr(ax, 
+                                                                    "azim"):
         elev0, azim0 = float(ax.elev), float(ax.azim)
         views = {"xy": (90, -90), "xz": (0, -90), "yz": (0, 0)}
 
@@ -219,7 +222,8 @@ def plot_drape_results(field, P, X, Y, Z, *, label="Shear angle [deg]",
     ax = Axes3D(fig, auto_add_to_figure=0)
     fig.add_axes(ax)
 
-    ax.plot_surface(X, Y, Z, rstride=2, cstride=2, color=(0.6, 0.7, 0.8), alpha=0.4)
+    ax.plot_surface(X, Y, Z, rstride=2, cstride=2, color=(0.6, 0.7, 0.8), 
+                    alpha=0.4)
 
     pc = art3d.Poly3DCollection(P, cmap=cmap_name)
     pc.set_facecolor(rgba.tolist())
@@ -286,17 +290,14 @@ def validate_run_inputs(
     solver : str
         Canonical solver identifier, for example "NR" or "standard".
     tool_data : dict, optional
-        Tool surface data produced by pre_process.tool_definition, for example
-        {"F": F, "X": X, "Y": Y, "Z": Z}. Required keys depend on analysis type.
+        Tool surface data produced by pre_process.tool_definition. 
     mesh : dict, optional
-        Mesh definition. Some analysis types require additional keys.
+        Mesh definition. 
     initial_conditions : dict, optional
-        Initial conditions. Some analysis types require keys such as "pre_shear".
+        Initial conditions. 
     analysis_options : dict, optional
         Analysis options. Some analysis types require keys such as
-        "kinematics", "stabilizations", "placement_tolerance".
-    layup : dict, optional
-        Layup dictionary. Required when analysis_type is "layup".
+        "stabilizations".
     run_defaults : dict, optional
         Defaults bundle used for layup materialisation. Required when
         analysis_type is "layup".
@@ -314,7 +315,9 @@ def validate_run_inputs(
     def require_keys(name, obj, keys):
         missing = [k for k in keys if k not in obj]
         if missing:
-            raise ValueError(f'"{name}" is missing required key(s): {missing}.')
+            raise ValueError(
+                f'"{name}" is missing required key(s): {missing}.'
+                )
 
     # --- Shared checks ------------------------------------------------------
     if initial_conditions is not None:
@@ -324,14 +327,15 @@ def validate_run_inputs(
         pre_shear = initial_conditions["pre_shear"]
         if solver == "standard" and pre_shear != 0:
             raise ValueError(
-                "Invalid configuration: pre_shear is only supported with the NR "
-                'solver. Set analysis_options["solver"] to "NR" or set '
+                "Invalid configuration: pre_shear is only supported with the "
+                'NR solver. Set analysis_options["solver"] to "NR" or set '
                 'initial_conditions["pre_shear"] to 0.'
             )
             
     if solver == 'standard' and analysis_options['kinematics'] != 'pure_shear':
         raise ValueError(
-                "Invalid configuration: the legacy standard solver is only supporter for pure shear analysis "
+                "Invalid configuration: the legacy standard solver is only "
+                "supporter for pure shear analysis. "
             )
 
     # --- Analysis-type specific checks --------------------------------------
@@ -340,6 +344,7 @@ def validate_run_inputs(
         require_keys("tool_data", tool_data, ["F"])
 
         require_dict("analysis_options", analysis_options)
-        require_keys("analysis_options", analysis_options, ["solver", "kinematics", "stabilizations"])
+        require_keys("analysis_options", analysis_options, 
+                     ["solver", "kinematics", "stabilizations"])
     else:
         raise ValueError(f'Unknown analysis_type "{analysis_type}".')

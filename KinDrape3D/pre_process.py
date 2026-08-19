@@ -11,12 +11,11 @@ Includes:
 
 Authors: Peter Hede Broberg, Christian Krogh, Bastian Schäfer, Jan Paul Wank, 
          Luise Kärger, Brian Lau Verndal Bak, Esben Lindgaard
-Date: July 2026
 """
 import numpy as np
 from scipy.interpolate import CloughTocher2DInterpolator as CT2DInt
 from scipy.interpolate import griddata
-
+import warnings
 
 # -------------------------------------------------------------------------
 # Functions for fabric and draping initializations
@@ -53,7 +52,7 @@ def setup_grid_and_initials(mesh, initial_conditions):
     orientation = mesh["orientation"]
 
     start_xy = initial_conditions["drape_start_mould_xy"]
-    start_uv = initial_conditions["drape_start_fabric_uv"]
+    start_us = initial_conditions["drape_start_fabric_us"]
     Ang = initial_conditions["ang"]
 
     # --- Orientation-aware setup ------------------------------------------
@@ -61,7 +60,7 @@ def setup_grid_and_initials(mesh, initial_conditions):
         Grid, d, OrgNode, Org, Ang = preprocess_superset(
             L, W, d_in, orientation,
             start_xy,   # (x_m, y_m)
-            start_uv,   # (U, V) from fabric lower-left
+            start_us,   # (U, V) from fabric lower-left
             Ang,        # intended lay direction on mould
             margin_cells=0,
         )
@@ -76,7 +75,7 @@ def setup_grid_and_initials(mesh, initial_conditions):
             L, W, d_in, dimensions_driving=False
         )
         OrgNode, Org = startpoints_to_initials(
-            start_xy, start_uv, d, Grid, Ang
+            start_xy, start_us, d, Grid, Ang
         )
         node_outside_mask = None
         cell_inside_mask_1d = None
@@ -93,7 +92,7 @@ def setup_grid_and_initials(mesh, initial_conditions):
         },
     }
 
-def startpoints_to_initials(drape_start_mould_xy, drape_start_fabric_uv, d, 
+def startpoints_to_initials(drape_start_mould_xy, drape_start_fabric_us, d, 
                             grid, Ang):
     """
     Compute solver 'org_node' and 'org' from user start points.
@@ -102,7 +101,7 @@ def startpoints_to_initials(drape_start_mould_xy, drape_start_fabric_uv, d,
     ----------
     drape_start_mould_xy : array-like of length 2
         2D start location on the mould plane used by the solver (x, y).
-    drape_start_fabric_uv : array-like of length 2
+    drape_start_fabric_us : array-like of length 2
         2D start location on the fabric measured from the LOWER-LEFT corner 
         (U to right, V up)
     d : float
@@ -137,7 +136,7 @@ def startpoints_to_initials(drape_start_mould_xy, drape_start_fabric_uv, d,
     """
     rows, cols = int(grid[0]), int(grid[1])
 
-    U, V = float(drape_start_fabric_uv[0]), float(drape_start_fabric_uv[1])
+    U, V = float(drape_start_fabric_us[0]), float(drape_start_fabric_us[1])
     x_m, y_m = float(drape_start_mould_xy[0]), float(drape_start_mould_xy[1])
 
     if d <= 0:
@@ -145,7 +144,10 @@ def startpoints_to_initials(drape_start_mould_xy, drape_start_fabric_uv, d,
     if rows < 2 or cols < 2:
         raise ValueError("Grid must have at least 2 nodes in each direction.")
     if U < 0 or V < 0:
-        raise ValueError("drape_start_fabric_uv must be measured from the lower-left corner (non-negative).")
+        raise ValueError(
+            "drape_start_fabric_us must be measured from the lower-left "
+            "corner (non-negative)."
+            )
 
     # Indices of the lower-left node of the containing cell
     i0 = int(np.floor(U / d))
@@ -167,8 +169,13 @@ def startpoints_to_initials(drape_start_mould_xy, drape_start_fabric_uv, d,
     org_x = x_m - translation_x 
     org_y = y_m - translation_y 
     
-    if [abs(translation_x/d), abs(translation_y/d)] > [0.75] or [abs(translation_x/d), abs(translation_y/d)] < [0.25]:
-        print('The start point is close to the cell edges. The geodesic lines should be compute in cell centre for best performance. To alleviate this, change the discretization.')
+    if ([abs(translation_x/d), abs(translation_y/d)] > [0.75] 
+            or [abs(translation_x/d), abs(translation_y/d)] < [0.25]):
+        warnings.warn(
+            "The start point is close to the cell edges. The geodesic lines"
+            " should be compute in cell centre for best performance. To "
+            "alleviate this, change the discretization d."
+            )
 
     org = [org_x, org_y]
     
@@ -225,13 +232,13 @@ def fabric_size_to_grid(L, W, d, dimensions_driving=False):
         cols = int(round(W / d)) + 1
         d_eff_L = L / (rows - 1)
         d_eff_W = W / (cols - 1)
-        # pick the smaller to ensure the entire fabric fits (optional: use mean)
+        # Pick the smaller to ensure the entire fabric fits or use mean
         d_eff = min(d_eff_L, d_eff_W)
 
     return [rows, cols], d_eff
 
 def compute_superset_masks(grid_sup, d_eff, alpha_deg, L, W, org_node, org,
-    require_all_nodes=True):
+                           require_all_nodes=True):
     """
     Build masks in the UNDEFORMED superset plane.
 
@@ -317,7 +324,7 @@ def compute_superset_masks(grid_sup, d_eff, alpha_deg, L, W, org_node, org,
 def preprocess_superset(
     L, W, d, alpha_deg,
     drape_start_mould_xy,      # (x_m, y_m)
-    drape_start_fabric_uv,     # (U, V) from fabric lower-left
+    drape_start_fabric_us,     # (u, s) from fabric lower-left
     theta_deg,                 # intended lay direction on mould
     margin_cells=2,
     dimensions_driving=False,
@@ -332,8 +339,8 @@ def preprocess_superset(
 
     if d <= 0: raise ValueError("d must be positive.")
     if L <= 0 or W <= 0: raise ValueError("L and W must be positive.")
-    U, V = map(float, drape_start_fabric_uv)
-    if U < 0 or V < 0: raise ValueError("drape_start_fabric_uv must be ≥ 0.")
+    U, S = map(float, drape_start_fabric_us)
+    if U < 0 or S < 0: raise ValueError("drape_start_fabric_us must be ≥ 0.")
     x_m, y_m = map(float, drape_start_mould_xy)
 
     # Node counts for the unrotated fabric (used for d_eff if dimensions drive)
@@ -341,8 +348,9 @@ def preprocess_superset(
     cols0 = int(round(W / d)) + 1
     if rows0 < 2 or cols0 < 2:
         raise ValueError("Grid must have at least 2 nodes per direction.")
-
-    d_eff = min(L / (rows0 - 1), W / (cols0 - 1)) if dimensions_driving else float(d)
+    
+    min_spacing = min(L / (rows0 - 1), W / (cols0 - 1))
+    d_eff = min_spacing if dimensions_driving else float(d)
 
     # Axis-aligned bbox of the rotated rectangle (rotation about center)
     a = np.deg2rad(alpha_deg)
@@ -361,8 +369,6 @@ def preprocess_superset(
     # Center of the superset "usable area" after margin
     sup_L = (rows_sup - 1) * d_eff   # total length span in superset
     sup_W = (cols_sup - 1) * d_eff
-    #cx = margin_cells * d_eff + 0.5 * (sup_L - 2 * margin_cells * d_eff)  # = 0.5*(rows_sup-1)*d_eff
-    #cy = margin_cells * d_eff + 0.5 * (sup_W - 2 * margin_cells * d_eff)  # = 0.5*(cols_sup-1)*d_eff
     C = np.array([0.5*sup_L, 0.5*sup_W]) # Center of the set
 
     # Rotation matrix
@@ -371,33 +377,38 @@ def preprocess_superset(
 
     # Map a fabric point (U,V) (measured from lower-left) to superset (û, v̂):
     # 1) shift to fabric center, 2) rotate, 3) shift to superset center C
-    def uv_to_hat(UV):
-        uv_centered = np.array(UV) - np.array([L/2, W/2])
-        return C + R @ uv_centered
+    def us_to_hat(US):
+        us_centered = np.array(US) - np.array([L/2, W/2])
+        return C + R @ us_centered
 
     # Superset coordinates of the *continuous* fabric start point
-    uhat, vhat = uv_to_hat([U, V])
+    uhat, shat = us_to_hat([U, S])
 
     # Lower-left node (cell origin) that contains (û, v̂)
     i0 = int(np.floor(uhat / d_eff))      # along Length (rows)
-    j0 = int(np.floor(vhat / d_eff))      # along Width  (cols)
+    j0 = int(np.floor(shat / d_eff))      # along Width  (cols)
     i0 = max(0, min(i0, rows_sup - 2))
     j0 = max(0, min(j0, cols_sup - 2))
     org_node = [i0, j0]
 
     # Solver origin so that org + (û, v̂) == drape_start_mould_xy
     uhat_node = i0 * d_eff
-    vhat_node = j0 * d_eff
+    shat_node = j0 * d_eff
     
     translation_x = (uhat - uhat_node)
-    translation_y = (vhat - vhat_node) 
+    translation_y = (shat - shat_node) 
     
     org_x = x_m - translation_x
     org_y = y_m - translation_y
     org = [org_x, org_y]
     
-    if [abs(translation_x/d), abs(translation_y/d)] > [0.75] or [abs(translation_x/d), abs(translation_y/d)] < [0.25]:
-        print('The start point is close to the cell edges. The geodesic lines should be compute in cell centre for best performance. To alleviate this, change the discretization.')
+    if ([abs(translation_x/d), abs(translation_y/d)] > [0.75] 
+            or [abs(translation_x/d), abs(translation_y/d)] < [0.25]):
+        warnings.warn(
+            "The start point is close to the cell edges. The geodesic lines"
+            " should be compute in cell centre for best performance. To "
+            "alleviate this, change the discretization d."
+            )
     
     if theta_is_fabric_u:
         c, s = np.cos(theta_rad-a), np.sin(theta_rad-a)
@@ -409,7 +420,8 @@ def preprocess_superset(
     org = R @ org
 
     # Initial drape direction
-    ang_sup = float(theta_deg) - float(alpha_deg) if theta_is_fabric_u else float(theta_deg)
+    drape_dir = float(theta_deg) - float(alpha_deg)
+    ang_sup = drape_dir if theta_is_fabric_u else float(theta_deg)
 
     return grid_sup, d_eff, org_node, org, ang_sup
 
@@ -477,8 +489,10 @@ def tool_definition(tool):
     elif tool['tool_type'] == 'hemisphere_fillet':
         X = tool['x_tool']
         Y = tool['y_tool']
-        Z = z_mould_hemisphere_fillet(X, Y, tool['tool_parameters']['R'], tool['tool_parameters']['r_f'])
-        F = make_mould_F(R= tool['tool_parameters']['R'], rf= tool['tool_parameters']['r_f'])
+        Z = z_mould_hemisphere_fillet(X, Y, tool['tool_parameters']['R'], 
+                                      tool['tool_parameters']['r_f'])
+        F = make_mould_F(R= tool['tool_parameters']['R'], 
+                         rf= tool['tool_parameters']['r_f'])
 
     elif tool['tool_type'] == 'point_cloud':
         data = np.loadtxt(tool['file_name'])
@@ -514,7 +528,7 @@ def make_mould_F(R, rf):
 
 def z_mould_hemisphere_fillet(x, y, R, rf):
     """
-    Male (convex) hemisphere with a circular fillet down to a flat flange (z=0).
+    Convex hemisphere with a circular fillet down to a flat flange (z=0).
 
     Parameters
     ----------
@@ -547,7 +561,7 @@ def z_mould_hemisphere_fillet(x, y, R, rf):
     m_sphere = r <= r_join
     z[m_sphere] = np.sqrt(R * R - r[m_sphere] * r[m_sphere])
 
-    # Fillet region (upper half of the fillet circle, which hits z=0 at r = r_c)
+    # Fillet region (upper half of the fillet circle, which hit z=0 at r = r_c)
     m_fillet = (r > r_join) & (r <= r_c)
     dr = r[m_fillet] - r_c
     z[m_fillet] = rf - np.sqrt(np.maximum(0.0, rf * rf - dr * dr))

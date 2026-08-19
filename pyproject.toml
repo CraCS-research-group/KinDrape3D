@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "KinDrape3D"
+version = "0.1.0"
+description = "In-plane kinematic draping analysis for composite textile reinforcements."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    {name = "Peter Hede Broberg",    email = "phb@mp.aau.dk"},
+	{name = "Christian Krogh",       email = "chr.krogh@gmail.com"},
+	{name = "Bastian Schäfer",       email = "bastian.schaefer@simutence.de"},
+	{name = "Jan Paul Wank",         email = "jan.wank@kit.edu"},
+	{name = "Luise Kärger",          email = "luise.kaerger@kit.edu"},
+	{name = "Brian Lau Verndal Bak", email = "brianbak@mp.aau.dk"},
+	{name = "Esben Lindgaard",       email = "elo@mp.aau.dk"},
+]
+keywords = [
+    "composites",
+    "draping",
+    "preforming",
+    "textiles",
+    "kinematics",
+    "processing",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+	"Intended Audience :: Manufacturing",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering"
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib"
+]
+[project.optional-dependencies]
+dev = [
+    "pytest"
+]
+
+[project.urls]
+Homepage = "https://github.com/CraCS-research-group/KinDrape3D"
+Repository = "https://github.com//CraCS-research-group/KinDrape3D"
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py"]

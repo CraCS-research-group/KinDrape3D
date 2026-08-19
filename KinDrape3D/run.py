@@ -9,8 +9,6 @@ modules.
 
 Authors: Peter Hede Broberg, Christian Krogh, Bastian Schäfer, Jan Paul Wank, 
         Luise kärger, Brian Lau Verndal Bak, Esben Lindgaard
-        
-Date: February 2026
 """
 
 import KinDrape3D as kd3d
@@ -60,6 +58,7 @@ def run_kindrape3d(tool, mesh, initial_conditions, analysis_options,
     tool_data = {"F": F, "X": X, "Y": Y, "Z": Z}
 
     analysis_type = analysis_options["analysis_type"]
+    
     solver = analysis_options["solver"]
 
     # --- Validation of inputs -----------------------------------------------

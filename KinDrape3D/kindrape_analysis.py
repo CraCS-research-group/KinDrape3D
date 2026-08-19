@@ -9,13 +9,15 @@ includes the final node positions, cell corner points, and local shear angles.
 
 Authors: Peter Hede Broberg, Christian Krogh, Bastian Schäfer, Jan Paul Wank, 
          Luise Kärger, Brian Lau Verndal Bak, Esben Lindgaard
-Date: February 2026
 """
 import numpy as np
 from scipy.optimize import (fsolve, minimize)
 from scipy.interpolate import splev
 
-def kindrape_single_layer_combined(d, Grid, Org, Ang, OrgNode, F, method='standard', PreShear=0, assumption = 'pure_shear', stabilizations = {}):
+def kindrape_single_layer_combined(
+        d, Grid, Org, Ang, OrgNode, F, method='standard', PreShear=0, 
+        assumption = 'pure_shear', stabilizations = {}
+        ):
     """
     Unified kinematic draping solver using either the standard or NR method.
 
@@ -51,91 +53,116 @@ def kindrape_single_layer_combined(d, Grid, Org, Ang, OrgNode, F, method='standa
 
     if method == 'standard':
         a_sol = fsolve(DistFun, d, args=(Node[tuple(Idx[:, 0:2])], F, d, Ang))
-        Node[tuple(Idx[:, 0:2])] = CellVertCoor(a_sol, Node[tuple(Idx[:, 0:2])], F, Ang)
+        Node[tuple(Idx[:, 0:2])] = CellVertCoor(a_sol,
+                                                Node[tuple(Idx[:, 0:2])], 
+                                                F, Ang)
     else:
-        Node[tuple(Idx)] = MoldCircIntersec(Node[tuple(Idx)], F, d, Ang + 90, 1)
+        Node[tuple(Idx)] = MoldCircIntersec(Node[tuple(Idx)], F, d, 
+                                            Ang + 90, 1)
 
     # STEP 2: Place generator cells (initial cells) while minimizing shear
     GenStart = OrgNode + np.array([[0, 0], [1, 1], [0, 1], [0, 0]])
-    nGen = np.hstack([Grid[0] - OrgNode[0] - 1, Grid[1] - OrgNode[1] - 2, OrgNode]) # number of cells per arm
+    nGen = np.hstack([Grid[0] - OrgNode[0] - 1, 
+                      Grid[1] - OrgNode[1] - 2, 
+                      OrgNode]) # number of cells per arm
     Opt = {'maxiter': 100, 'ftol': 5e-9, 'iprint': 0, 'disp': True}
     
     for i in range(4): # For each arm
         CellAng = Ang + i * 90 + PreShear * (1 + (-1)**i) / 2
-        a_0 = 0.75 * d * np.tile(CosSin(CellAng), (1, 2)).flatten() # initial guess
+        # Initial guess
+        a_0 = 0.75 * d * np.tile(CosSin(CellAng), (1, 2)).flatten() 
 
-        for k in GenStart[i, :] + np.arange(nGen[i]).reshape(-1, 1) * Dir1[i, :]:
+        for k in (GenStart[i, :] 
+                  + np.arange(nGen[i]).reshape(-1, 1) * Dir1[i, :]):
             # Define idx
             Idx, CellNo = get_cell_idx(k[0], k[1], Dir1, Dir2, Grid, i)
 
             if method == 'standard':
                 # Define solver input, call optimizer, assign solution
                 BndBox = 0.5 * np.array([[-1]*4, [1]*4]) 
-                Bnd = tuple(map(tuple, (a_0 + np.linalg.norm(a_0[0:3]) * BndBox).T))
+                Bnd = tuple(map(tuple, 
+                                (a_0 + np.linalg.norm(a_0[0:3]) * BndBox).T))
                 Arg = (Node[tuple(Idx)], F, d)
                 Constr = {'type': 'eq', 'fun': DistFun, 'args': Arg}                         
-                res = minimize(ObjFun, a_0, args=Arg, bounds=Bnd, method='SLSQP',
-                               constraints=Constr, options=Opt)
+                res = minimize(ObjFun, a_0, args=Arg, bounds=Bnd, 
+                               method='SLSQP', constraints=Constr, options=Opt)
                 Node[tuple(Idx)] = CellVertCoor(res.x, Node[tuple(Idx)], F)
                 a_0 = res.x # use as next initial guess
             else:
                 # Solve for Vert #2+4 using NR, upd. CellAng_0
-                Node[tuple(Idx)], CellAng = NRSol(Node[tuple(Idx)], CellAng, F, d, PreShear, i)
+                Node[tuple(Idx)], CellAng = NRSol(Node[tuple(Idx)], CellAng, F, 
+                                                  d, PreShear, i)
 
             # Put current cell coord. and shear in P and Shear and update a_0
             P_c = list(map(tuple, Node[tuple(Idx)]))
             P[CellNo] = [P_c[(i + j) % 4] for j in range(4)]
             shear_val = compute_cell_shear(Node[tuple(Idx)], method, i)
-            Shear[CellNo] = shear_val if method == 'standard' else np.mean(shear_val)
+            Shear[CellNo] = (shear_val if method == 'standard' 
+                                 else np.mean(shear_val))
 
     # STEP 3: Place remaining, constrained cells in 4 quadrants between arms
     ConStart = OrgNode + np.array([[1, 1], [0, 1], [0, 0], [1, 0]])
-    nCon = (nGen[[0, 1, 2, 1, 2, 3, 0, 3]] - [1, 0, 0, 0, 0, 0, 1, 0]).reshape(4, 2)
+    nCon = (nGen[[0, 1, 2, 1, 2, 3, 0, 3]] 
+                - [1, 0, 0, 0, 0, 0, 1, 0]).reshape(4, 2)
 
     for i in range(4): # For each quadrant
-        # Fiber trakig algorithm for simple shear solvers
-        if method == 'NR' and (assumption == 'simple_shear' or assumption == 'enhanced_simple_shear'):
-            h_list = ConStart[i, 0] + np.arange(nCon[i, 0]) * (Dir1[i, 0] + Dir2[i, 0])
-            w_list = ConStart[i, 1] + np.arange(nCon[i, 1]) * (Dir1[i, 1] + Dir2[i, 1])
+        # Fibre traking algorithm for simple shear solvers
+        if method == 'NR' and (assumption == 'simple_shear' 
+                                   or assumption == 'enhanced_simple_shear'):
+            h_list = (ConStart[i, 0] 
+                          + np.arange(nCon[i, 0]) * (Dir1[i, 0] + Dir2[i, 0]))
+            w_list = (ConStart[i, 1] 
+                          + np.arange(nCon[i, 1]) * (Dir1[i, 1] + Dir2[i, 1]))
             if len(h_list) == 0 or len(w_list) == 0:
                 continue
-            fibers, L_0 = fiber_tracking(h_list, w_list, Dir1, Dir2, Grid, i, Node, d, F, assumption, stabilizations)
+            fibers, L_0 = fiber_tracking(h_list, w_list, Dir1, Dir2, Grid, i, 
+                                         Node, d, F, assumption, 
+                                         stabilizations)
             
         # Placing of the remaining constrained cells
         h_idx = 0
-        for h in ConStart[i, 0] + np.arange(nCon[i, 0]) * (Dir1[i, 0] + Dir2[i, 0]):
+        for h in (ConStart[i, 0] 
+                      + np.arange(nCon[i, 0]) * (Dir1[i, 0] + Dir2[i, 0])):
             w_idx = 0
-            for w in ConStart[i, 1] + np.arange(nCon[i, 1]) * (Dir1[i, 1] + Dir2[i, 1]):
+            for w in (ConStart[i, 1] 
+                          + np.arange(nCon[i, 1]) * (Dir1[i, 1] + Dir2[i, 1])):
                 # Get cell idx and no. 
                 Idx, CellNo = get_cell_idx(h, w, Dir1, Dir2, Grid, i)
 
                 if method == 'standard' and assumption == 'pure_shear':
                     # Define solver input, call fsolve, assign solution
-                    a_0 = Node[tuple(Idx[:, 3])][0:2] - Node[tuple(Idx[:, 0])][0:2]
+                    a_0 = (Node[tuple(Idx[:, 3])][0:2] 
+                               - Node[tuple(Idx[:, 0])][0:2])
                     a_sol = fsolve(DistFun, a_0, args=(Node[tuple(Idx)], F, d),
                                    factor=1, diag=(d, d))
                     Node[tuple(Idx)] = CellVertCoor(a_sol, Node[tuple(Idx)], F)
-                elif method == 'NR' and (assumption == 'simple_shear' or assumption == 'enhanced_simple_shear'):
+                elif (method == 'NR' 
+                          and (assumption == 'simple_shear' 
+                                   or assumption == 'enhanced_simple_shear')):
                     # Call find_nodes_simple_shear to find Vert #3
-                    new_point = find_nodes_simple_shear(fibers[h_idx+1], (w_idx + 1)*d)
+                    new_point = find_nodes_simple_shear(fibers[h_idx + 1], 
+                                                        (w_idx + 1) * d)
                     vert = Node[tuple(Idx)]
                     vert[2,:] = new_point
                     Node[tuple(Idx)] = vert
                 else:
                     # Call MoldCircIntersec to get Vert #3
-                    Node[tuple(Idx)] = MoldCircIntersec(Node[tuple(Idx)], F, d, [], 2)
+                    Node[tuple(Idx)] = MoldCircIntersec(Node[tuple(Idx)], F, d, 
+                                                        [], 2)
                 
                 # Put current cell coord. and shear in P and Shear
                 P_c = list(map(tuple, Node[tuple(Idx)]))
                 P[CellNo] = [P_c[(i + j) % 4] for j in range(4)]
                 shear_val = compute_cell_shear(Node[tuple(Idx)], method, i)
-                Shear[CellNo] = shear_val if method == 'standard' else np.mean(shear_val)
+                Shear[CellNo] = (shear_val if method == 'standard' 
+                                     else np.mean(shear_val))
                 w_idx += 1
             h_idx += 1
 
     return Shear, Node, P
 
-def fiber_tracking(h_list, w_list, Dir1, Dir2, Grid, i, Node, d, F, assumption, stabilizations):
+def fiber_tracking(h_list, w_list, Dir1, Dir2, Grid, i, Node, d, F, assumption, 
+                   stabilizations):
     fibers = []
     # Define fiber 1 (found from the generators)
     Idx, CellNo = get_cell_idx(h_list[0], w_list[0], Dir1, Dir2, Grid, i)
@@ -169,52 +196,106 @@ def fiber_tracking(h_list, w_list, Dir1, Dir2, Grid, i, Node, d, F, assumption, 
             # Call the transverse deformation update to output the updated d 
             if assumption == 'enhanced_simple_shear':
                 d_previous = d_updated
-                d_updated = compute_transverse_deformation(fibers[h_idx], L_fiber, L_0, d, fiber_new[-1], stabilizations['enhanced_simple_shear_parameters'], stabilizations['enhanced_simple_shear_relation_type'])
-                d_updated = viscous_damping(d_updated, d_previous, stabilizations['enhanced_simple_shear_damping'])
+                d_updated = compute_transverse_deformation(
+                    fibers[h_idx], L_fiber, L_0, d, fiber_new[-1], 
+                    stabilizations['enhanced_simple_shear_parameters'], 
+                    stabilizations['enhanced_simple_shear_relation_type']
+                    )
+                d_updated = viscous_damping(
+                    d_updated, d_previous, 
+                    stabilizations['enhanced_simple_shear_damping']
+                    )
             if w_idx + 1  < len(fibers[h_idx]) - 1: 
-                # Find the next fibre point from cylinder-cylinder intersection if there are at least two fibre points from the previous fibre
-                vert = np.array([fibers[h_idx][w_idx], fibers[h_idx][w_idx+1], np.zeros(3)*np.nan, fiber_new[w_idx-dir_idx]]) if (i == 0 or i == 2) else np.array([fibers[h_idx][w_idx], fiber_new[w_idx-dir_idx], np.zeros(3)*np.nan, fibers[h_idx][w_idx+1]])
-                vert_1 = np.array([fibers[h_idx][w_idx+2], fibers[h_idx][w_idx+2], fibers[h_idx][w_idx+2], fibers[h_idx][w_idx+2]])
+                # Find the next fibre point from cylinder-cylinder intersection 
+                # if there are at least two fibre points on the previous fibre
+                vert_a = np.array(
+                    [fibers[h_idx][w_idx], fibers[h_idx][w_idx+1], 
+                     np.zeros(3)*np.nan, fiber_new[w_idx-dir_idx]]
+                    )
+                vert_b = np.array(
+                    [fibers[h_idx][w_idx], fiber_new[w_idx-dir_idx], 
+                     np.zeros(3)*np.nan, fibers[h_idx][w_idx+1]]
+                    )
+                vert = vert_a if (i == 0 or i == 2) else vert_b
+                vert_1 = np.array(
+                    [fibers[h_idx][w_idx+2], fibers[h_idx][w_idx+2], 
+                     fibers[h_idx][w_idx+2], fibers[h_idx][w_idx+2]]
+                    )
                 if not stabilizations['average_fiber_length']:
-                    fiber_new.append(simple_shear_new_function(vert,vert_1, F, d_updated, 2, i, False, fibers[h_idx-1])[2])
+                    fiber_new.append(
+                        simple_shear_function(vert,vert_1, F, d_updated, 2, 
+                                              i, False, fibers[h_idx-1])[2]
+                        )
                 else: 
-                    fiber_new.append(simple_shear_new_function(vert,vert_1, F, d_updated, 2, i, True, fibers[h_idx-1])[2])
+                    fiber_new.append(
+                        simple_shear_function(vert,vert_1, F, d_updated, 2, 
+                                              i, True, fibers[h_idx-1])[2]
+                        )
             else:
-                vert = np.array([fibers[h_idx][len(fibers[h_idx]) - 2], fibers[h_idx][len(fibers[h_idx]) - 1], np.zeros(3)*np.nan, fiber_new[w_idx-dir_idx]]) if (i == 0 or i == 2) else np.array([fibers[h_idx][len(fibers[h_idx]) - 2], fiber_new[w_idx-dir_idx], np.zeros(3)*np.nan, fibers[h_idx][len(fibers[h_idx]) - 1]])
-                fiber_new.append(SphereCylinderIntersec(vert, F, d_updated, 2, i, R=d)[2]) 
+                vert_a = np.array(
+                    [fibers[h_idx][len(fibers[h_idx]) - 2], 
+                     fibers[h_idx][len(fibers[h_idx]) - 1], 
+                     np.zeros(3)*np.nan, 
+                     fiber_new[w_idx-dir_idx]]
+                    )
+                vert_b = np.array(
+                    [fibers[h_idx][len(fibers[h_idx]) - 2], 
+                     fiber_new[w_idx-dir_idx], 
+                     np.zeros(3)*np.nan, 
+                     fibers[h_idx][len(fibers[h_idx]) - 1]]
+                    )
+                vert = vert_a  if (i == 0 or i == 2) else vert_b
+                fiber_new.append(
+                    SphereCylinderIntersec(vert, F, d_updated, 2, i, R=d)[2]
+                    ) 
             
             
             # Check if the points are turning backwards, and adjust accordingly
-            if stabilizations['change_dir']:
+            if stabilizations['remove_spurious_points']:
                 if w_idx - dir_idx > 0 and dir_idx < 50: # Dir idx max added
-                    vector_1 = fiber_new[w_idx-dir_idx] - fiber_new[w_idx-1-dir_idx]
-                    vector_2 = fiber_new[w_idx+1-dir_idx] - fiber_new[w_idx-dir_idx]
-                    #check_dir = np.dot(vector_1,vector_2)
-                    check_dir = compute_angle_between_vectors(vector_1, vector_2)
-                    if check_dir > np.deg2rad(90): #< 0:
-                        print('Check dir has been called!!')
+                    vector_1 = (fiber_new[w_idx-dir_idx] 
+                                    - fiber_new[w_idx-1-dir_idx])
+                    vector_2 = (fiber_new[w_idx+1-dir_idx] 
+                                    - fiber_new[w_idx-dir_idx])
+                    check_dir = compute_angle_between_vectors(vector_1, 
+                                                              vector_2)
+                    if check_dir > np.deg2rad(90): 
+#                        print('CRemoval of spurious points has been called!!')
                         # Delete the appropriate length
-                        L_delete= np.linalg.norm(fiber_new[w_idx-dir_idx]-fiber_new[w_idx-1-dir_idx])
+                        L_delete= np.linalg.norm(
+                            fiber_new[w_idx-dir_idx]-fiber_new[w_idx-1-dir_idx]
+                            )
                         L_fiber = L_fiber - L_delete
                         del fiber_new[w_idx-dir_idx]
-                        dir_idx += 1 # Increase a number corresponding to times direction have changed
+                        # Increase number corresponding to times direction
+                        # has changed
+                        dir_idx += 1 
                         
                         
             # Find the length of the fibre section and update L_fiber
             # Update w_idx
-            L_section = np.linalg.norm(fiber_new[w_idx+1-dir_idx]-fiber_new[w_idx-dir_idx]) # Insert fibre length
+            L_section = np.linalg.norm(
+                fiber_new[w_idx+1-dir_idx] - fiber_new[w_idx-dir_idx]
+                ) # Insert fibre length
             L_fiber = L_fiber + L_section
             w_idx += 1
         h_idx += 1
         
-        if stabilizations['prune']:
-            fiber_new = prune_fibre_by_max_curvature(fiber_new, stabilizations['prune_cutoff'], zigzag = stabilizations['prune_zigzag']) # Remove the points that causes too high curvature
+        # Remove the points that causes too high curvature
+        if stabilizations['curvature_based_point_removal']:
+            fiber_new = stabilise_fibre_by_max_curvature(
+                fiber_new, stabilizations['curvature_threshold'], 
+                irregularity = stabilizations['use_irregularity_index']
+                ) 
         fibers.append(fiber_new)
     #kd3d.utility.plot_fibres(fibers)
     return fibers, L_0
 
 
-def point_on_fibre(P, F, tol=1e-6): ### Auxillary function to find out if a new point is placed on a previous fibre
+def point_on_fibre(P, F, tol=1e-6): 
+    """
+    Auxillary function to check if a new point is placed on a previous fibre.
+    """
     P = np.asarray(P)
     for A, B in zip(F[:-1], F[1:]):
         A, B = np.asarray(A), np.asarray(B)
@@ -228,10 +309,12 @@ def point_on_fibre(P, F, tol=1e-6): ### Auxillary function to find out if a new 
     return False
 
 def viscous_damping(d_new, d_prev, damping_coeff, dt = 1):
-    d_damped = d_new * dt / (damping_coeff + dt) + d_prev * damping_coeff / (damping_coeff + dt)
+    d_damped = (d_new * dt / (damping_coeff + dt) 
+                    + d_prev * damping_coeff / (damping_coeff + dt))
     return d_damped
 
-def compute_transverse_deformation(fiber, L_fiber, L_0, d, fibre_start, parameters, relation_type):
+def compute_transverse_deformation(fiber, L_fiber, L_0, d, fibre_start, 
+                                   parameters, relation_type):
     ## Step 1: Find two points at L_fiber and L_fiber+d
     point1, point2 = find_shear_nodes(fiber, L_fiber)
     point3 = fibre_start
@@ -243,16 +326,24 @@ def compute_transverse_deformation(fiber, L_fiber, L_0, d, fibre_start, paramete
     shear_angle =  np.pi/2 - angle 
   
     ## Step 3: Compute the updated distance as a function of the shear
-    if relation_type == 'hyper_tan':
+    if relation_type == 'phenomenological':
         d_updated = d - np.tanh(parameters[0]*shear_angle)*parameters[1]*d
-        #angle = abs(shear_angle)
+    elif relation_type == 'tricot' or relation_type == 'tricot_bounded':
+        angle = parameters[0]
        # a = 10
-      #  tricot_angle = np.deg2rad(54)
-      #  d_0 = parameters[1]*d
-      #  theoretical = d*np.sin(shear_angle) * (np.sqrt(1 + (1/np.tan(tricot_angle)**2)*(np.cos(shear_angle))**2) - 1 / np.tan(tricot_angle)*np.cos(shear_angle))
-      #  d_updated = max(theoretical, d_0)# d_0 + 1/a * np.log(1+ np.exp(a* (theoretical - d_0))) # d_0 + (d-d_0)*theoretical*(1 / np.cosh(a*(angle - np.pi/2)))
-      #  if shear_angle < 0:
-      #      d_updated = d
+        tricot_angle = np.deg2rad(angle)
+        d_0 = parameters[1]*d
+        theoretical = (d*np.sin(shear_angle) 
+                           * (np.sqrt(1 + (1/np.tan(tricot_angle)**2)
+                                          * (np.cos(shear_angle))**2) 
+                                  - 1 / np.tan(tricot_angle)
+                                      * np.cos(shear_angle)))
+        d_updated = max(theoretical, d_0) 
+        if relation_type == 'tricot_bounded':
+            if shear_angle < 0:
+                d_updated = d
+    elif relation_type == 'simple_shear':
+        d_updated = d
     elif relation_type == 'spline':
         ##### ALTERNATIVE step with the new spline ##############
         gamma_lock = np.deg2rad(90)  # lock angle (radians)
@@ -260,11 +351,13 @@ def compute_transverse_deformation(fiber, L_fiber, L_0, d, fibre_start, paramete
         n_ctrl = len(parameters)# number of coefficients
 
         t = make_open_uniform_knots(n_ctrl, k)
-        # -------------------------------------------------------------------------
+        # --------------------------------------------------------------------
         # 3. Evaluate over range of shear angles
-        # -------------------------------------------------------------------------
+        # --------------------------------------------------------------------
         d_updated = d_from_spline(shear_angle, d, parameters, t, k, gamma_lock)
         #####################################
+    else: 
+        raise ValueError("Unknown shear-spacing relation type inputted.")
     return d_updated
 
 def make_open_uniform_knots(n_ctrl: int, k: int):
@@ -278,18 +371,21 @@ def make_open_uniform_knots(n_ctrl: int, k: int):
     internal = np.linspace(-1.0, 1.0, n_int + 2)[1:-1] if n_int > 0 else []
     return np.r_[np.full(k+1, -1.0), internal, np.full(k+1,  1.0)]
 
-def d_from_spline(gamma, d0, c, t, k, gamma_lock=np.deg2rad(45.0), normalize_at_zero=False):
+def d_from_spline(gamma, d0, c, t, k, gamma_lock=np.deg2rad(45.0), 
+                  normalize_at_zero=False):
     """
-    Evaluate d(gamma) on signed normalized shear s = gamma / gamma_lock ∈ [-1, 1].
-    If normalize_at_zero=True, we rescale so that d(0) = d0 regardless of coefficients.
+    Evaluate d(gamma) on signed normalized shear 
+    s = gamma / gamma_lock ∈ [-1, 1].
+    If normalize_at_zero=True, we rescale so that d(0) = d0 
+    regardless of coefficients.
     """
-    s = np.clip(gamma / gamma_lock, -1.0, 1.0)      # <-- signed (no abs), allows asymmetry
+    s = np.clip(gamma / gamma_lock, -1.0, 1.0)  # <-- signed, allows asymmetry
     y = np.asarray(splev(s, (t, c, k), ext=2))
 
     if normalize_at_zero:
         y0 = float(splev(0.0, (t, c, k), ext=2))
         if abs(y0) > 1e-12:
-            y = y / y0                               # ensures d(0) = d0
+            y = y / y0  # ensures d(0) = d0
     return d0 * y
 
 def find_shear_nodes(fiber, L_node):
@@ -304,7 +400,8 @@ def find_shear_nodes(fiber, L_node):
     
         ################ Simple bounds check to place missing nodes ###########
         if L_idx + 1 >= len(fiber):
-            print('An auxillary point outside the fibre has been placed in shear tracking')
+#            print('An auxillary point outside the fibre has been placed in '
+#                  'shear tracking')
             A, B = fiber[-2], fiber[-1]
             direction = (B - A) / np.linalg.norm(B - A)
             return B + direction * (L_node - L_acc), fiber[-1]
@@ -325,7 +422,7 @@ def find_shear_nodes(fiber, L_node):
         shear_point = fiber[L_idx]
     else:
         shear_point = fiber[L_idx-1]
-        print('Reverse shearing')
+#        print('Reverse shearing')
 
     return new_point, shear_point
 
@@ -341,7 +438,7 @@ def find_nodes_simple_shear(fiber, L_node):
     
         ################ Simple bounds check to place missing nodes ###########
         if L_idx + 1 >= len(fiber):
-            print('An auxillary point outside the fibre has been placed')
+#            print('An auxillary point outside the fibre has been placed')
             A, B = fiber[-2], fiber[-1]
             direction = (B - A) / np.linalg.norm(B - A)
             return B + direction * (L_node - L_acc)
@@ -361,18 +458,20 @@ def find_nodes_simple_shear(fiber, L_node):
     new_point = fiber[L_idx - 1] * (1 - L_ratio) + fiber[L_idx] * L_ratio
     return new_point
 
-def fibre_curvature_circumcircle(points, eps=1e-12, return_zigzag=False, ratio_cap=None):
+def fibre_curvature_circumcircle(points, eps=1e-12, return_irregularity=False, 
+                                 ratio_cap=None):
     """
     Compute discrete curvature (magnitude) at each interior point of a fibre
     using the circumcircle method:
-        κ_i = 4A / (a b c) = 2 * ||(P_i - P_{i-1}) × (P_{i+1} - P_i)|| / (a b c)
+        κ_i = 4A / (a b c) 
+            = 2 * ||(P_i - P_{i-1}) × (P_{i+1} - P_i)|| / (a b c)
 
     Parameters
     ----------
     points : (N, 3) array_like or list of array_like
-        Ordered 3D coordinates of the fibre polyline. Endpoints are treated as pinned.
+        Ordered 3D coordinates of the fibre. Endpoints are treated as pinned.
     eps : float, optional
-        Small positive threshold to avoid division by ~0 for degenerate triangles.
+        Small positive threshold to avoid division by ~0.
 
     Returns
     -------
@@ -392,9 +491,9 @@ def fibre_curvature_circumcircle(points, eps=1e-12, return_zigzag=False, ratio_c
     v2 = P[2:]   - P[1:-1]         # (N-2, 3) = P_{i+1} - P_i
 
     # Side lengths a, b, c
-    a = np.linalg.norm(v1, axis=1)                         # ||P_i - P_{i-1}||
-    b = np.linalg.norm(v2, axis=1)                         # ||P_{i+1} - P_i||
-    c = np.linalg.norm(P[2:] - P[:-2], axis=1)             # ||P_{i+1} - P_{i-1}||
+    a = np.linalg.norm(v1, axis=1)                     # ||P_i - P_{i-1}||
+    b = np.linalg.norm(v2, axis=1)                     # ||P_{i+1} - P_i||
+    c = np.linalg.norm(P[2:] - P[:-2], axis=1)         # ||P_{i+1} - P_{i-1}||
 
     # Twice the triangle area = ||v1 × v2||
     cross_v = np.cross(v1, v2)
@@ -410,25 +509,26 @@ def fibre_curvature_circumcircle(points, eps=1e-12, return_zigzag=False, ratio_c
     kappa = np.zeros(N, dtype=float)
     kappa[1:-1] = kappa_int
     
-    if not return_zigzag:
+    if not return_irregularity:
         return kappa
 
-    # Zig-zag ratio: max(a,b) / max(min(a,b), eps)
+    # Irregularity ratio: max(a,b) / max(min(a,b), eps)
     min_ab = np.maximum(np.minimum(a, b), eps)
     ratio = np.maximum(a, b) / min_ab
     if ratio_cap is not None:
         ratio = np.minimum(ratio, ratio_cap)
-    zig_int = kappa_int * ratio
-    zigzag = np.zeros(N, dtype=float)
-    zigzag[1:-1] = zig_int
+    irr_int = kappa_int * ratio
+    irregularity = np.zeros(N, dtype=float)
+    irregularity[1:-1] = irr_int
 
-    return zigzag
+    return irregularity
 
-def prune_fibre_by_max_curvature(fibre_pts, kappa_max, eps=1e-12, zigzag=False): # Change to filter fibre or remove points
+def stabilise_fibre_by_max_curvature(fibre_pts, kappa_max, eps=1e-12, 
+                                     irregularity=False): 
     """
-    Prune a fibre (list of (3,) arrays) by repeatedly removing the interior point
-    with the highest circumcircle curvature if that removal lowers the global
-    maximum curvature. Stops when the max curvature <= kappa_max.
+    Stabilise a fibre (list of (3,) arrays) by repeatedly removing the interior 
+    point with the highest circumcircle curvature if that removal lowers the 
+    global maximum curvature. Stops when the max curvature <= kappa_max.
 
     Requires: fibre_curvature_circumcircle(points, eps)
 
@@ -445,13 +545,15 @@ def prune_fibre_by_max_curvature(fibre_pts, kappa_max, eps=1e-12, zigzag=False):
     # Convert to (N,3) array
     P = np.asarray(fibre_pts, dtype=float)
     if P.ndim != 2 or P.shape[1] != 3:
-        raise ValueError("fibre_pts must be a list/array of shape (N, 3) with 1D points")
+        raise ValueError("fibre_pts must be a list/array of shape (N, 3) with "
+                         " 1D points.")
 
     if P.shape[0] < 3:
         return [row.copy() for row in P]
 
     def kappa_arr(Q):
-        return fibre_curvature_circumcircle(Q, eps=eps, return_zigzag = zigzag)
+        return fibre_curvature_circumcircle(Q, eps=eps, 
+                                            return_irregularity = irregularity)
 
     while True:
         kappa = kappa_arr(P)
@@ -482,7 +584,7 @@ def prune_fibre_by_max_curvature(fibre_pts, kappa_max, eps=1e-12, zigzag=False):
 
         if new_max < old_max:
             P = P_try  # accept deletion and continue
-            print('Pruning done')
+#            print('Pruning done')
         else:
             # no improvement → stop
             break
@@ -490,7 +592,8 @@ def prune_fibre_by_max_curvature(fibre_pts, kappa_max, eps=1e-12, zigzag=False):
     # Return in original format: list of (3,) arrays
     return [row.copy() for row in P]
 
-def simple_shear_new_function(Vert, Vert_1, F, d, UnknownVertIdx, qd, average_fiber_length = True, previous_fibre=[]):
+def simple_shear_function(Vert, Vert_1, F, d, UnknownVertIdx, qd, 
+                          average_fiber_length = True, previous_fibre=[]):
     
     # Define the points for the analysis
     P1 = Vert[[0], :][0]
@@ -502,15 +605,19 @@ def simple_shear_new_function(Vert, Vert_1, F, d, UnknownVertIdx, qd, average_fi
     #### Compute the cut-off angle for sphere-cylnder intersection
     angle = compute_angle_between_vectors(P3-P2, P1-P2) 
     cut_off_angle = np.radians(5)
-    if (angle < cut_off_angle or angle > (np.pi - cut_off_angle) or np.isnan(angle)):
+    if (angle < cut_off_angle 
+            or angle > (np.pi - cut_off_angle) 
+                or np.isnan(angle)):
         if average_fiber_length:
-            R = (np.linalg.norm(P1-P2) + np.linalg.norm(P3-P2)) / (2) # Inserted to stabilise results 
+            # Inserted to stabilise results 
+            R = (np.linalg.norm(P1-P2) + np.linalg.norm(P3-P2)) / (2) 
         else:
             R = d
         Vert = SphereCylinderIntersec(Vert, F, d, UnknownVertIdx, qd, R)
         return Vert
     
-    IntersecPt = cylinder_cylinder_intersection(P1, P2, P3, P4, F, d, cut_off_angle, previous_fibre)
+    IntersecPt = cylinder_cylinder_intersection(P1, P2, P3, P4, F, d, 
+                                                cut_off_angle, previous_fibre)
     
     # Store the IntersecPt in Vert at the row specified by UnknownVertIdx        
     Vert[UnknownVertIdx,:] = IntersecPt
@@ -529,7 +636,9 @@ def cylinder_cylinder_intersection(P1, P2, P3, P4, F, d, cut_off_angle,
     # 2: Place y normal to the plane defined by 1-2-3
     y_hat_temp = np.cross(P3-P2, P1-P2)
     
-    if np.dot(P4-P2, y_hat_temp) < 0:  # Ensures that y hat points in the direction of point 4. I guess this is for easier finding the roots later on. 
+    # Ensures that y hat points in the direction of point 4. 
+    # This is for easier finding the roots later on. 
+    if np.dot(P4-P2, y_hat_temp) < 0:  
         y_hat_temp = y_hat_temp * (-1)
     
     y_hat = (y_hat_temp)/ np.linalg.norm(y_hat_temp)
@@ -538,8 +647,9 @@ def cylinder_cylinder_intersection(P1, P2, P3, P4, F, d, cut_off_angle,
     x_hat = np.cross(y_hat,z_hat) / np.linalg.norm(np.cross(y_hat,z_hat))
     
     ## Find theta between the two cylinders
-    #theta = -np.arccos(np.dot(P2-P1,P3-P2) / (np.linalg.norm(P2-P1) * np.linalg.norm(P3-P2)))
-    theta = np.arccos(np.dot(P2-P1,P3-P2) / (np.linalg.norm(P2-P1) * np.linalg.norm(P3-P2)))
+    theta = np.arccos(np.dot(P2-P1,P3-P2) 
+                          / (np.linalg.norm(P2-P1) 
+                              * np.linalg.norm(P3-P2)))
     
     if np.dot(P3-P2, x_hat) < 0:  # Ensures the correct sign of theta
         theta = - theta
@@ -579,7 +689,8 @@ def cylinder_cylinder_intersection(P1, P2, P3, P4, F, d, cut_off_angle,
         FunVal_mid = CurveCoor[2] - F(CurveCoor[0],CurveCoor[1])
         # Stop or adjust interval based on function value at midpoint
         if np.abs(FunVal_mid) < 5e-6: # Stopping tolerance
-            IntersecPt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],CurveCoor[1])))
+            IntersecPt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],
+                                                       CurveCoor[1])))
             break
         elif FunVal_mid < 0 and increasing: # Changed sign on this one
             phi[0] = phi_mid
@@ -589,12 +700,14 @@ def cylinder_cylinder_intersection(P1, P2, P3, P4, F, d, cut_off_angle,
             phi[1] = phi_mid
         
         if i == 99: # Last iteration
-            IntersecPt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],CurveCoor[1])))
+            IntersecPt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],
+                                                       CurveCoor[1])))
    
     check_angle = compute_angle_between_vectors(P2-P1, IntersecPt-P4) 
-    if (np.pi - cut_off_angle >  check_angle > cut_off_angle or abs(FunVal_mid) > 1e-3):
+    if (np.pi - cut_off_angle >  check_angle > cut_off_angle 
+            or abs(FunVal_mid) > 1e-3):
         # Bisection
-        # Find the intersection between the curve and the surface using bisection 
+        # Find the intersection between the curve and the surface using
         IntersecPt_alt = np.array([np.nan, np.nan, np.nan])
 
         phi = np.array([1/4 * np.pi, 6/4 * np.pi]) # # 1/4 * np.pi, 5/4 * np.pi
@@ -616,7 +729,7 @@ def cylinder_cylinder_intersection(P1, P2, P3, P4, F, d, cut_off_angle,
         for i in range(100): # Max iter
             # Compute middle point
             phi_mid = np.sum(phi)/2
-            # Curve pt. in 3D based on center, radius, 2 perp. vectors and angle
+            # Curve pt. in 3D based on center, radius, 2 perp. vectors and ang
             x_local = r_cylinders * np.cos(phi_mid)
             y_local = r_cylinders * np.sin(phi_mid)
             z_local = (1 / np.tan(theta) - 1 / np.sin(theta)) * x_local #*(-1) # removed pi
@@ -624,7 +737,8 @@ def cylinder_cylinder_intersection(P1, P2, P3, P4, F, d, cut_off_angle,
             FunVal_mid_alt = CurveCoor[2] - F(CurveCoor[0],CurveCoor[1])
             # Stop or adjust interval based on function value at midpoint
             if np.abs(FunVal_mid_alt) < 5e-6: # Stopping tolerance
-                IntersecPt_alt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],CurveCoor[1])))
+                IntersecPt_alt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],
+                                                               CurveCoor[1])))
                 break
             elif FunVal_mid_alt < 0 and increasing: # Changed sign on this one
                 phi[0] = phi_mid
@@ -634,23 +748,26 @@ def cylinder_cylinder_intersection(P1, P2, P3, P4, F, d, cut_off_angle,
                 phi[1] = phi_mid
                 
             if i == 99: # Last iteration
-                IntersecPt_alt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],CurveCoor[1])))
+                IntersecPt_alt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],
+                                                               CurveCoor[1])))
         
         ########### Test to see if the bew point is shifting fibres
         if point_on_fibre(IntersecPt, previous_fibre, tol=d):
             IntersecPt = IntersecPt_alt 
-            print('Fibre crossing detected')
+#            print('Fibre crossing detected')
         elif point_on_fibre(IntersecPt_alt, previous_fibre, tol=d):
             IntersecPt_alt = IntersecPt    
-            print('Fibre crossing detected')
+#            print('Fibre crossing detected')
             
-        if point_on_fibre(IntersecPt, previous_fibre, tol=d) and point_on_fibre(IntersecPt_alt, previous_fibre, tol=d):
+        if (point_on_fibre(IntersecPt, previous_fibre, tol=d) 
+                and point_on_fibre(IntersecPt_alt, previous_fibre, tol=d)):
             print('Both points are on the wrong fibre!!!!!!!!!!!')
         #################
         
         # Test to see if the new point is actually better
         if abs(FunVal_mid) <  5e-6 and abs(FunVal_mid_alt) <  5e-6:
-            check_angle_alt = compute_angle_between_vectors(P2-P1,IntersecPt_alt-P4)
+            check_angle_alt = compute_angle_between_vectors(P2-P1,
+                                                            IntersecPt_alt-P4)
             angle = min(np.pi - check_angle, check_angle)
             angle_alt = min(np.pi - check_angle_alt, check_angle_alt)
             if angle >  angle_alt:
@@ -659,7 +776,9 @@ def cylinder_cylinder_intersection(P1, P2, P3, P4, F, d, cut_off_angle,
             if abs(FunVal_mid_alt) <  5e-6:
                 IntersecPt = IntersecPt_alt 
         else:
-            raise ValueError("No root found in the cylinder-cylinder bisection.")
+            raise ValueError(
+                "No root found in the cylinder-cylinder bisection."
+                )
          
     return IntersecPt
 
@@ -683,8 +802,10 @@ def get_cell_idx(Row, Col, Dir1, Dir2, Grid, No):
 
     Supports both standard and NR solvers.
     """
-    Rows = Row + np.array([0, Dir2[No, 0], Dir1[No, 0] + Dir2[No, 0], Dir1[No, 0]])
-    Cols = Col + np.array([0, Dir2[No, 1], Dir1[No, 1] + Dir2[No, 1], Dir1[No, 1]])
+    Rows = Row + np.array([0, Dir2[No, 0], Dir1[No, 0] 
+                               + Dir2[No, 0], Dir1[No, 0]])
+    Cols = Col + np.array([0, Dir2[No, 1], Dir1[No, 1] 
+                               + Dir2[No, 1], Dir1[No, 1]])
     CellNo = Rows[No] + Cols[No] * (Grid[0] - 1)
     return np.vstack([Rows, Cols]), CellNo
 
@@ -702,7 +823,8 @@ def compute_cell_shear(Vert, method, quadrant_index=None):
     """
     u = Vert[[1, 2, 3, 0]] - Vert
     v = Vert[[3, 0, 1, 2]] - Vert
-    angle = np.arctan2(np.linalg.norm(np.cross(u, v), axis=1), np.sum(u * v, axis=1))
+    angle = np.arctan2(np.linalg.norm(np.cross(u, v), axis=1), np.sum(u * v, 
+                                                                      axis=1))
 
     if method == 'standard':
         return np.abs(angle * 180 / np.pi - 90)
@@ -932,7 +1054,8 @@ def SphereCylinderIntersec(Vert, F, d, UnknownVertIdx, qd, R=0):
         FunVal_mid = CurveCoor[2] - F(CurveCoor[0],CurveCoor[1])
         # Stop or adjust interval based on function value at midpoint
         if np.abs(FunVal_mid) < 5e-6: # Stopping tolerance
-            IntersecPt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],CurveCoor[1])))
+            IntersecPt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],
+                                                       CurveCoor[1])))
             break
         elif np.isnan(FunVal_mid): 
             phi[0] = phi_mid
@@ -944,7 +1067,8 @@ def SphereCylinderIntersec(Vert, F, d, UnknownVertIdx, qd, R=0):
             phi[1] = phi_mid
             
         if i == 99: # Last iteration
-            IntersecPt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],CurveCoor[1])))
+            IntersecPt = np.hstack((CurveCoor[0:2].T,F(CurveCoor[0],
+                                                       CurveCoor[1])))
     # Store the IntersecPt in Vert at the row specified by UnknownVertIdx        
     Vert[UnknownVertIdx,:] = IntersecPt
     return Vert

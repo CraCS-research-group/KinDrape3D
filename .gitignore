@@ -1,0 +1,7 @@
+# build files
+build
+*.egg-info
+
+__pycache__
+
+results

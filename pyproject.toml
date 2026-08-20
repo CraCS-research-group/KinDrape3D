@@ -30,7 +30,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
 	"Intended Audience :: Manufacturing",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Topic :: Scientific/Engineering"
@@ -48,6 +47,9 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/CraCS-research-group/KinDrape3D"
 Repository = "https://github.com//CraCS-research-group/KinDrape3D"
+
+[tool.setuptools.packages.find]
+include = ["KinDrape3D*"]
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py"]

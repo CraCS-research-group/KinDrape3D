@@ -262,6 +262,87 @@ def plot_drape_results(field, P, X, Y, Z, *, label="Shear angle [deg]",
 
     return ax, fig
 
+def find_outer_contour(node):
+    nr, nc, _ = node.shape
+    outline = np.concatenate(
+        [
+            node[0, :, :],          # top edge (left → right)
+            node[1:-1, -1, :],      # right edge (top → bottom, skip corners)
+            node[-1, ::-1, :],      # bottom edge (right → left)
+            node[-2:0:-1, 0, :],    # left edge (bottom → top, skip corners)
+        ],
+        axis=0,
+    )
+    outline = np.vstack([outline, outline[0]])          # close outline
+    return outline[:, :2]                      
+
+
+def find_masked_outer_contour(node, mask):
+    """
+    Find outline nodes for a masked fabric.
+
+    Parameters
+    ----------
+    node : ndarray
+        Array of node coordinates with shape (nx, ny, 3).
+    mask : ndarray
+        Boolean array with shape (nx, ny).
+        False = inside fabric
+        True  = outside fabric
+
+    Returns
+    -------
+    outline_nodes : ndarray
+        Array of outline node coordinates with shape (n_outline, 3).
+    outline_idx : ndarray
+        Array of outline indices with shape (n_outline, 2), giving [i, j].
+    """
+    nx, ny = mask.shape
+    outline_idx = []
+
+    for i in range(nx):
+        for j in range(ny):
+            if mask[i, j]:
+                continue
+
+            # Boundary of array counts as edge
+            if i == 0 or i == nx - 1 or j == 0 or j == ny - 1:
+                outline_idx.append([i, j])
+                continue
+
+            # If any direct neighbour is outside, this is an edge node
+            if (mask[i - 1, j] or mask[i + 1, j] or
+                mask[i, j - 1] or mask[i, j + 1]):
+                outline_idx.append([i, j])
+
+    outline_idx = np.asarray(outline_idx, dtype=int)
+    outline_nodes = node[outline_idx[:, 0], outline_idx[:, 1], :]
+
+    return outline_nodes[:, :2], outline_idx
+
+def order_outer_contour(points):
+    """
+    Reorder unordered 2D outer contour points so they follow the boundary.
+
+    points : (n,2) array of [x,y]
+
+    returns ordered (n,2) array
+    """
+    pts = np.asarray(points)
+
+    # centroid of the point cloud
+    center = pts.mean(axis=0)
+
+    # angle of each point relative to centroid
+    angles = np.arctan2(pts[:,1] - center[1], pts[:,0] - center[0])
+
+    # sort points by angle
+    order = np.argsort(angles)
+    
+    #center_point = (points.max(axis=0) + points.min(axis=0))/2
+    
+    return pts[order] # - center_point
+
 
 
 # -------------------------------------------------------------------------

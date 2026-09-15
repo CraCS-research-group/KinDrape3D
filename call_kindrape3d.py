@@ -196,6 +196,15 @@ def main():
         P, X, Y, Z, 
         label="In-plane shear [deg]")
     
+    # Retrieve the outer contour
+    nodes = results['sim_data']['Node']
+    if mesh['orientation'] == 0: 
+        outer_contour = kd3d.utility.find_outer_contour(nodes)
+    else:
+        mask = results['sim_data']['masks']['node_outside_mask']
+        outer_contour, _ = kd3d.utility.find_masked_outer_contour(nodes, mask) 
+        outer_contour = kd3d.utility.order_outer_contour(outer_contour)
+    
     # Saving the results
     kd3d.utility.save_drape_results(
         results['sim_data'], results['settings'], toc-tic, fig, ax, 

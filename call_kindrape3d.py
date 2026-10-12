@@ -24,7 +24,7 @@ def main():
     # ---------------------------------------------------------------------
     # Valid choices: "point_cloud", "hemisphere_fillet", "hemisphere", "ramp",
     #                "double_curved"
-    tool_case = "hemisphere_fillet"
+    tool_case = "point_cloud"
     # ---------------------------------------------------------------------
     # Tool definition
     # ---------------------------------------------------------------------
@@ -32,7 +32,7 @@ def main():
         tool_type = "point_cloud"
         tool = {
             "tool_type": tool_type,
-            "file_name": "Hemisphere_example/hemisphere_xyz.XYZ",
+            "file_name": "Hemisphere_example/convex_manifold.msh",
             "centre": True,
         }
 
@@ -105,10 +105,10 @@ def main():
     # ---------------------------------------------------------------------
     mesh = {
         # Length of the fabric
-        "L": 0.3, 
+        "L": 1., 
         
         # Width of the fabric
-        "W": 0.3, 
+        "W": 1., 
         
         # Orientation of the fibres along the warp direction
         "orientation": 0.0, 
@@ -149,7 +149,7 @@ def main():
         
         # Kinematic assumptions
         # Valid options: 'pure_shear', 'simple_shear', 'enhanced_simple_shear'
-        "kinematics": "enhanced_simple_shear", 
+        "kinematics": "pure_shear", 
         
         # Stabilizations for the simple shear and enhanced simple shear
         "stabilizations": {

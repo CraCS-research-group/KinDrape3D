@@ -91,7 +91,7 @@ class TestKinDrape3D(unittest.TestCase):
         tool_type = 'point_cloud'
         tool = {
             'tool_type': tool_type,
-            'file_name': 'Hemishpere_example\\hemisphere_xyz.XYZ',
+            'file_name': 'Hemisphere_example\\hemisphere_xyz.XYZ',
             'centre': True
         }
             
@@ -157,7 +157,7 @@ class TestKinDrape3D(unittest.TestCase):
         tool_type = 'point_cloud'
         tool = {
             'tool_type': tool_type,
-            'file_name': 'Hemishpere_example\\hemisphere_xyz.XYZ',
+            'file_name': 'Hemisphere_example\\hemisphere_xyz.XYZ',
             'centre': True
         }
                 

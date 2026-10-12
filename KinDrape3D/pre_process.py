@@ -16,6 +16,7 @@ import numpy as np
 from scipy.interpolate import CloughTocher2DInterpolator as CT2DInt
 from scipy.interpolate import griddata
 import warnings
+import meshio
 
 # -------------------------------------------------------------------------
 # Functions for fabric and draping initializations
@@ -495,18 +496,26 @@ def tool_definition(tool):
                          rf= tool['tool_parameters']['r_f'])
 
     elif tool['tool_type'] == 'point_cloud':
-        data = np.loadtxt(tool['file_name'])
+        if tool['file_name'].endswith(".msh"):
+            mesh = meshio.read(tool['file_name'])
+            data = mesh.points 
+        elif tool['file_name'].endswith(".XYZ"):
+            data = np.loadtxt(tool['file_name']) * 1e-3
+        else:
+            raise ValueError(
+                "Only .msh and .XYZ files supported for point cloud."
+                )
 
         if data.shape[1] != 3:
             raise ValueError("Each line must contain exactly three values:",
                              "X Y Z")
 
-        # Scale to meters
-        X, Y, Z = data[:, 0] * 1e-3, data[:, 1] * 1e-3, data[:, 2] * 1e-3
+        # Assign to X, Y, and Z
+        X, Y, Z = data[:, 0], data[:, 1], data[:, 2] 
 
         if tool['centre']:
-            X -= (np.max(X) - np.min(X)) / 2
-            Y -= (np.max(Y) - np.min(Y)) / 2
+            X -= (np.max(X) + np.min(X)) / 2
+            Y -= (np.max(Y) + np.min(Y)) / 2
 
         X, Y, Z = make_meshgrid_from_unordered(X, Y, Z)
         F = CT2DInt((X.ravel(), Y.ravel()), Z.ravel(), fill_value=np.min(Z))

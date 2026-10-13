@@ -128,6 +128,39 @@ def load_results(name, less_than_3D):
         array = flat_array.reshape(shape)
     return array
 
+def export_cell_centre_csv(P, filename):
+    """Export cell centres and fibre directions to a CSV file."""
+    P = np.asarray(P, dtype=float)
+
+    # Cell centres
+    centres = P.mean(axis=1)
+
+    # Edge vectors: 1->2, 4->3, 2->3, 1->4
+    edges = np.stack((
+        P[:, 1] - P[:, 0],
+        P[:, 2] - P[:, 3],
+        P[:, 2] - P[:, 1],
+        P[:, 3] - P[:, 0],
+    ), axis=1)
+
+    # Normalise each edge vector
+    edges /= np.linalg.norm(edges, axis=2, keepdims=True)
+
+    # Average the two edges in each fibre direction
+    dir1 = edges[:, 0] + edges[:, 1]
+    dir2 = edges[:, 2] + edges[:, 3]
+
+    # Normalise the resulting fibre directions
+    dir1 /= np.linalg.norm(dir1, axis=1, keepdims=True)
+    dir2 /= np.linalg.norm(dir2, axis=1, keepdims=True)
+
+    # Export CSV
+    data = np.column_stack((centres, dir1, dir2))
+    header = "x_point,y_point,z_point,x_dir1,y_dir1,z_dir1,x_dir2,y_dir2,z_dir2"
+
+    np.savetxt(filename, data, delimiter=",", header=header,
+               comments="", fmt="%.10g")
+
 # -------------------------------------------------------------------------
 # Functions for plotting results
 # -------------------------------------------------------------------------

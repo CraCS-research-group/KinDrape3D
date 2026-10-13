@@ -24,7 +24,7 @@ def main():
     # ---------------------------------------------------------------------
     # Valid choices: "point_cloud", "hemisphere_fillet", "hemisphere", "ramp",
     #                "double_curved"
-    tool_case = "point_cloud"
+    tool_case = "hemisphere_fillet"
     # ---------------------------------------------------------------------
     # Tool definition
     # ---------------------------------------------------------------------
@@ -33,7 +33,7 @@ def main():
         tool = {
             "tool_type": tool_type,
             "file_name": "Hemisphere_example/convex_manifold.msh",
-            "centre": True,
+            "centre": False,
         }
 
     elif tool_case == "hemisphere_fillet":
@@ -105,10 +105,10 @@ def main():
     # ---------------------------------------------------------------------
     mesh = {
         # Length of the fabric
-        "L": 1., 
+        "L": 0.3, 
         
         # Width of the fabric
-        "W": 1., 
+        "W": 0.3, 
         
         # Orientation of the fibres along the warp direction
         "orientation": 0.0, 
@@ -149,7 +149,7 @@ def main():
         
         # Kinematic assumptions
         # Valid options: 'pure_shear', 'simple_shear', 'enhanced_simple_shear'
-        "kinematics": "pure_shear", 
+        "kinematics": "enhanced_simple_shear", 
         
         # Stabilizations for the simple shear and enhanced simple shear
         "stabilizations": {
@@ -210,6 +210,10 @@ def main():
         results['sim_data'], results['settings'], toc-tic, fig, ax, 
         "example_id", "run_id", save_figures=True,
         )
+    
+    # Export cell centre coordinates and fibre directions to a .csv file
+    kd3d.utility.export_cell_centre_csv(P, "lizzy_draping.csv")
+    
     # Loading results
     # run_dir, fields, meta = kd3d.utility.load_drape_results('example_id', 
     #                                                         'run_id')
